@@ -12,7 +12,6 @@ struct FActorInitStateChangedParams;
 class UGameFrameworkComponentManager;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogMLInit, Log, All);
-DECLARE_LOG_CATEGORY_EXTERN(LogMLAbility, Log, All);
 
 /**
  * Minimal Lyra-style pawn init-state orchestrator.
@@ -55,7 +54,6 @@ private:
     bool ResolvePawnDataWithFallback();
     void TryBindToExperienceReady();
     void HandleExperienceReady();
-    void LogAbilitySystemState(const TCHAR* Context) const;
 
     static const FName NAME_ActorFeatureName;
 

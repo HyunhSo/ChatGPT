@@ -2,7 +2,6 @@
 
 #include "Character/MLHeroComponent.h"
 #include "Character/MLPawnExtensionComponent.h"
-#include "Player/MLPlayerState.h"
 
 AMLCharacter::AMLCharacter(const FObjectInitializer& ObjectInitializer)
     : Super(ObjectInitializer)
@@ -11,16 +10,6 @@ AMLCharacter::AMLCharacter(const FObjectInitializer& ObjectInitializer)
     HeroComponent = CreateDefaultSubobject<UMLHeroComponent>(TEXT("HeroComponent"));
 }
 
-
-UAbilitySystemComponent* AMLCharacter::GetMLAbilitySystemComponent() const
-{
-    if (const AMLPlayerState* MLPlayerState = GetPlayerState<AMLPlayerState>())
-    {
-        return MLPlayerState->GetMLAbilitySystemComponent();
-    }
-
-    return nullptr;
-}
 void AMLCharacter::BeginPlay()
 {
     Super::BeginPlay();

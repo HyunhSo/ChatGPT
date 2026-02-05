@@ -5,14 +5,14 @@
 #include "GameFramework/WorldSettings.h"
 #include "GameModes/MLGameState.h"
 #include "Player/MLPlayerController.h"
-#include "Player/MLPlayerState.h"
+#include "Player/MyModularPlayerState.h"
 #include "System/MLExperienceDefinition.h"
 
 AMLGameMode::AMLGameMode()
 {
     DefaultPawnClass = AMLCharacter::StaticClass();
     PlayerControllerClass = AMLPlayerController::StaticClass();
-    PlayerStateClass = AMLPlayerState::StaticClass();
+    PlayerStateClass = AMyModularPlayerState::StaticClass();
     GameStateClass = AMLGameState::StaticClass();
 
     DefaultExperiencePath = FSoftObjectPath(TEXT("/Game/System/Experiences/B_ML_DefaultExperience.B_ML_DefaultExperience"));

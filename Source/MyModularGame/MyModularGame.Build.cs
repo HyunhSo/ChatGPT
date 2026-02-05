@@ -15,8 +15,7 @@ public class MyModularGame : ModuleRules
             "EnhancedInput",
             "ModularGameplay",
             "GameFeatures",
-            "GameplayTags",
-            "GameplayAbilities"
+            "GameplayTags"
         });
 
         PrivateDependencyModuleNames.AddRange(new string[]
