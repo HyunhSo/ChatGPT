@@ -53,12 +53,13 @@ namespace
                     const APawn* Pawn = PC ? PC->GetPawn() : nullptr;
                     const APlayerState* PS = PC ? PC->PlayerState : nullptr;
                     const UMLPawnExtensionComponent* PawnExtension = Pawn ? Pawn->FindComponentByClass<UMLPawnExtensionComponent>() : nullptr;
+                    const UMLHeroComponent* HeroComponent = Pawn ? Pawn->FindComponentByClass<UMLHeroComponent>() : nullptr;
                     const bool bIsLocal = PC ? PC->IsLocalController() : false;
                     const UMLPawnData* PawnData = PawnExtension ? PawnExtension->GetPawnData() : nullptr;
                     const FName PawnDataSource = PawnExtension ? PawnExtension->GetPawnDataResolutionSource() : NAME_None;
                     const bool bUsedFallback = PawnExtension ? PawnExtension->IsUsingPawnDataFallback() : false;
 
-                    UE_LOG(LogMLInit, Log, TEXT("[ML.InitStateDump] PC=%s Pawn=%s PS=%s Local=%s MLInitState=%s PawnDataPresent=%s PawnData=%s PawnDataPath=%s PawnDataSource=%s UsedFallback=%s"),
+                    UE_LOG(LogMLInit, Log, TEXT("[ML.InitStateDump] PC=%s Pawn=%s PS=%s Local=%s MLInitState=%s PawnDataPresent=%s PawnData=%s PawnDataPath=%s PawnDataSource=%s UsedFallback=%s HeroSetupDone(Input=%s,Camera=%s)"),
                         *GetNameSafe(PC),
                         *GetNameSafe(Pawn),
                         *GetNameSafe(PS),
@@ -68,7 +69,9 @@ namespace
                         *GetNameSafe(PawnData),
                         *GetPathNameSafe(PawnData),
                         *PawnDataSource.ToString(),
-                        bUsedFallback ? TEXT("true") : TEXT("false"));
+                        bUsedFallback ? TEXT("true") : TEXT("false"),
+                        HeroComponent && HeroComponent->IsInputSetupDone() ? TEXT("true") : TEXT("false"),
+                        HeroComponent && HeroComponent->IsCameraSetupDone() ? TEXT("true") : TEXT("false"));
                 }
             }
         })
@@ -172,19 +175,11 @@ void UMLPawnExtensionComponent::HandleChangeInitState(UGameFrameworkComponentMan
 
         bGameplayReadyHandled = true;
 
-        if (!PawnData)
-        {
-            UE_LOG(LogMLInit, Warning, TEXT("[MLInit] %s: GameplayReady reached without PawnData (Source=%s). Hero setup skipped."),
-                *GetNameSafe(GetOwner()),
-                *PawnDataResolutionSource.ToString());
-            return;
-        }
-
         if (APawn* Pawn = GetPawn<APawn>())
         {
             if (UMLHeroComponent* HeroComponent = Pawn->FindComponentByClass<UMLHeroComponent>())
             {
-                HeroComponent->HandleGameplayReady();
+                HeroComponent->HandleGameplayReady(PawnData);
             }
         }
     }
@@ -328,9 +323,10 @@ void UMLPawnExtensionComponent::DumpInitState() const
     const APlayerState* PS = Pawn ? Pawn->GetPlayerState() : nullptr;
     const AMLGameState* MLGameState = GetWorld() ? GetWorld()->GetGameState<AMLGameState>() : nullptr;
     const UMLExperienceDefinition* Experience = MLGameState ? MLGameState->GetCurrentExperience() : nullptr;
+    const UMLHeroComponent* HeroComponent = Pawn ? Pawn->FindComponentByClass<UMLHeroComponent>() : nullptr;
     const bool bIsLocal = PC ? PC->IsLocalController() : false;
 
-    UE_LOG(LogMLInit, Log, TEXT("[ML.InitStateDump] Pawn=%s PC=%s PS=%s Local=%s ExperienceReady=%s ExperiencePresent=%s Experience=%s ExperiencePath=%s InitState=%s PawnDataPresent=%s PawnData=%s PawnDataPath=%s PawnDataSource=%s UsedFallback=%s"),
+    UE_LOG(LogMLInit, Log, TEXT("[ML.InitStateDump] Pawn=%s PC=%s PS=%s Local=%s ExperienceReady=%s ExperiencePresent=%s Experience=%s ExperiencePath=%s InitState=%s PawnDataPresent=%s PawnData=%s PawnDataPath=%s PawnDataSource=%s UsedFallback=%s HeroSetupDone(Input=%s,Camera=%s)"),
         *GetNameSafe(Pawn),
         *GetNameSafe(PC),
         *GetNameSafe(PS),
@@ -344,5 +340,7 @@ void UMLPawnExtensionComponent::DumpInitState() const
         *GetNameSafe(PawnData),
         *GetPathNameSafe(PawnData),
         *PawnDataResolutionSource.ToString(),
-        bUsedPawnDataFallback ? TEXT("true") : TEXT("false"));
+        bUsedPawnDataFallback ? TEXT("true") : TEXT("false"),
+        HeroComponent && HeroComponent->IsInputSetupDone() ? TEXT("true") : TEXT("false"),
+        HeroComponent && HeroComponent->IsCameraSetupDone() ? TEXT("true") : TEXT("false"));
 }
