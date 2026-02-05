@@ -53,14 +53,14 @@ namespace
 
                 const AMLGameState* MLGameState = World->GetGameState<AMLGameState>();
                 const UMLExperienceDefinition* Experience = MLGameState ? MLGameState->GetCurrentExperience() : nullptr;
-
-                UE_LOG(LogMLInit, Log, TEXT("[ML.InitStateDump] World=%s NetMode=%d GS=%s ExperienceReady=%s Experience=%s ExperiencePath=%s"),
+                UE_LOG(LogMLInit, Log, TEXT("[ML.InitStateDump] World=%s NetMode=%d GS=%s ExperienceReady=%s ExperiencePresent=%s Experience=%s ExperiencePath=%s"),
                     *GetNameSafe(World),
                     static_cast<int32>(World->GetNetMode()),
                     *GetNameSafe(MLGameState),
                     MLGameState && MLGameState->IsExperienceReady() ? TEXT("true") : TEXT("false"),
+                    Experience ? TEXT("true") : TEXT("false"),
                     *GetNameSafe(Experience),
-                    *GetObjectPathSafe(Experience));
+                    *GetPathNameSafe(Experience));
 
                 for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
                 {
@@ -68,17 +68,25 @@ namespace
                     const APawn* Pawn = PC ? PC->GetPawn() : nullptr;
                     const APlayerState* PS = PC ? PC->PlayerState : nullptr;
                     const UMLPawnExtensionComponent* PawnExtension = Pawn ? Pawn->FindComponentByClass<UMLPawnExtensionComponent>() : nullptr;
+                    const UMLHeroComponent* HeroComponent = Pawn ? Pawn->FindComponentByClass<UMLHeroComponent>() : nullptr;
+                    const bool bIsLocal = PC ? PC->IsLocalController() : false;
                     const UMLPawnData* PawnData = PawnExtension ? PawnExtension->GetPawnData() : nullptr;
+                    const FName PawnDataSource = PawnExtension ? PawnExtension->GetPawnDataResolutionSource() : NAME_None;
+                    const bool bUsedFallback = PawnExtension ? PawnExtension->IsUsingPawnDataFallback() : false;
 
-                    UE_LOG(LogMLInit, Log, TEXT("[ML.InitStateDump] PC=%s Pawn=%s PS=%s Role=%s MLInitState=%s PawnData=%s PawnDataPath=%s Fallback=%s"),
+                    UE_LOG(LogMLInit, Log, TEXT("[ML.InitStateDump] PC=%s Pawn=%s PS=%s Local=%s MLInitState=%s PawnDataPresent=%s PawnData=%s PawnDataPath=%s PawnDataSource=%s UsedFallback=%s HeroSetupDone(Input=%s,Camera=%s)"),
                         *GetNameSafe(PC),
                         *GetNameSafe(Pawn),
                         *GetNameSafe(PS),
-                        GetLocalRoleText(Pawn),
+                        bIsLocal ? TEXT("Local") : TEXT("Remote"),
                         PawnExtension ? *PawnExtension->GetCurrentInitState().ToString() : TEXT("None"),
+                        PawnData ? TEXT("true") : TEXT("false"),
                         *GetNameSafe(PawnData),
-                        *GetObjectPathSafe(PawnData),
-                        PawnExtension ? PawnExtension->GetFallbackSourceText() : TEXT("None"));
+                        *GetPathNameSafe(PawnData),
+                        *PawnDataSource.ToString(),
+                        bUsedFallback ? TEXT("true") : TEXT("false"),
+                        HeroComponent && HeroComponent->IsInputSetupDone() ? TEXT("true") : TEXT("false"),
+                        HeroComponent && HeroComponent->IsCameraSetupDone() ? TEXT("true") : TEXT("false"));
                 }
             }
         })
@@ -97,6 +105,7 @@ void UMLPawnExtensionComponent::BeginPlay()
     Super::BeginPlay();
 
     RegisterInitStateFeature();
+    TryBindToExperienceReady();
     CheckDefaultInitialization();
 }
 
@@ -156,7 +165,7 @@ bool UMLPawnExtensionComponent::CanChangeInitState(UGameFrameworkComponentManage
 
     if (CurrentState == MyInitStateTags::TAG_InitState_DataInitialized && DesiredState == MyInitStateTags::TAG_InitState_GameplayReady)
     {
-        return !bGameplayReadyHandled;
+        return true;
     }
 
     return false;
@@ -166,7 +175,7 @@ void UMLPawnExtensionComponent::HandleChangeInitState(UGameFrameworkComponentMan
 {
     if (DesiredState == MyInitStateTags::TAG_InitState_DataInitialized)
     {
-        ResolvePawnData();
+        ResolvePawnDataWithFallback();
     }
 
     UE_LOG(LogMLInit, Log, TEXT("[MLInit] %s: %s -> %s (Controller=%s, PlayerState=%s, ExperienceReady=%s, PawnData=%s, Fallback=%s)"),
@@ -183,23 +192,17 @@ void UMLPawnExtensionComponent::HandleChangeInitState(UGameFrameworkComponentMan
     {
         if (bGameplayReadyHandled)
         {
-            UE_LOG(LogMLInit, Verbose, TEXT("[MLInit] %s already handled GameplayReady; skipping re-entry."), *GetNameSafe(GetOwner()));
+            UE_LOG(LogMLInit, Verbose, TEXT("[MLInit] %s: GameplayReady already handled; skipping re-entry."), *GetNameSafe(GetOwner()));
             return;
         }
 
         bGameplayReadyHandled = true;
 
-        if (!PawnData)
-        {
-            UE_LOG(LogMLInit, Warning, TEXT("[MLInit] %s reached GameplayReady without PawnData. Hero setup is skipped."), *GetNameSafe(GetOwner()));
-            return;
-        }
-
         if (APawn* Pawn = GetPawn<APawn>())
         {
             if (UMLHeroComponent* HeroComponent = Pawn->FindComponentByClass<UMLHeroComponent>())
             {
-                HeroComponent->HandleGameplayReady();
+                HeroComponent->HandleGameplayReady(PawnData);
             }
         }
     }
@@ -214,7 +217,8 @@ void UMLPawnExtensionComponent::RegisterInitStateFeature()
 {
     CurrentInitState = FGameplayTag();
     PawnData = nullptr;
-    PawnDataFallbackSource = EMLPawnDataFallbackSource::None;
+    PawnDataResolutionSource = NAME_None;
+    bUsedPawnDataFallback = false;
     bGameplayReadyHandled = false;
 
     Super::RegisterInitStateFeature();
@@ -222,11 +226,21 @@ void UMLPawnExtensionComponent::RegisterInitStateFeature()
 
 void UMLPawnExtensionComponent::UnregisterInitStateFeature()
 {
+    if (AMLGameState* MLGameState = GetWorld() ? GetWorld()->GetGameState<AMLGameState>() : nullptr)
+    {
+        if (ExperienceReadyHandle.IsValid())
+        {
+            MLGameState->OnExperienceReady().Remove(ExperienceReadyHandle);
+            ExperienceReadyHandle.Reset();
+        }
+    }
+
     Super::UnregisterInitStateFeature();
 
     CurrentInitState = FGameplayTag();
     PawnData = nullptr;
-    PawnDataFallbackSource = EMLPawnDataFallbackSource::None;
+    PawnDataResolutionSource = NAME_None;
+    bUsedPawnDataFallback = false;
     bGameplayReadyHandled = false;
 }
 
@@ -260,56 +274,69 @@ bool UMLPawnExtensionComponent::IsExperienceReady() const
     return MLGameState && MLGameState->IsExperienceReady();
 }
 
-bool UMLPawnExtensionComponent::ResolvePawnData()
-{
-    PawnData = nullptr;
-    PawnDataFallbackSource = EMLPawnDataFallbackSource::Missing;
 
+bool UMLPawnExtensionComponent::ResolvePawnDataWithFallback()
+{
     const AMLGameState* MLGameState = GetWorld() ? GetWorld()->GetGameState<AMLGameState>() : nullptr;
     const UMLExperienceDefinition* Experience = MLGameState ? MLGameState->GetCurrentExperience() : nullptr;
+
+    bUsedPawnDataFallback = false;
+    PawnDataResolutionSource = NAME_None;
+    PawnData = nullptr;
 
     if (Experience && Experience->DefaultPawnData)
     {
         PawnData = Experience->DefaultPawnData;
-        PawnDataFallbackSource = EMLPawnDataFallbackSource::Experience;
-
-        UE_LOG(LogMLInit, Log, TEXT("[MLInit] %s resolved PawnData from Experience: %s"),
-            *GetNameSafe(GetOwner()),
-            *GetNameSafe(PawnData));
-        return true;
+        PawnDataResolutionSource = TEXT("Experience.DefaultPawnData");
     }
-
-    const UMLPawnData* GameModeDefaultPawnData = MLGameState ? MLGameState->GetDefaultPawnData() : nullptr;
-    if (GameModeDefaultPawnData)
+    else if (MLGameState && MLGameState->GetDefaultPawnData())
     {
-        PawnData = GameModeDefaultPawnData;
-        PawnDataFallbackSource = EMLPawnDataFallbackSource::GameModeDefault;
-
-        UE_LOG(LogMLInit, Log, TEXT("[MLInit] %s resolved PawnData via fallback(GameMode/GameState default): %s"),
-            *GetNameSafe(GetOwner()),
-            *GetNameSafe(PawnData));
-        return true;
+        PawnData = MLGameState->GetDefaultPawnData();
+        PawnDataResolutionSource = MLGameState->GetPawnDataSource().IsNone() ? FName(TEXT("GameState.DefaultPawnData")) : MLGameState->GetPawnDataSource();
+        bUsedPawnDataFallback = true;
     }
 
-    UE_LOG(LogMLInit, Warning, TEXT("[MLInit] %s has no Experience and no fallback PawnData. Continuing without PawnData."), *GetNameSafe(GetOwner()));
-    return false;
+    if (!PawnData)
+    {
+        PawnDataResolutionSource = TEXT("None");
+    }
+
+    UE_LOG(LogMLInit, Log, TEXT("[MLInit] %s: PawnData resolve -> ExperiencePresent=%s Experience=%s PawnData=%s PawnDataPath=%s Source=%s Fallback=%s"),
+        *GetNameSafe(GetOwner()),
+        Experience ? TEXT("true") : TEXT("false"),
+        *GetNameSafe(Experience),
+        *GetNameSafe(PawnData),
+        *GetPathNameSafe(PawnData),
+        *PawnDataResolutionSource.ToString(),
+        bUsedPawnDataFallback ? TEXT("true") : TEXT("false"));
+
+    return PawnData != nullptr;
 }
 
-const TCHAR* UMLPawnExtensionComponent::GetFallbackSourceText() const
+void UMLPawnExtensionComponent::TryBindToExperienceReady()
 {
-    switch (PawnDataFallbackSource)
+    AMLGameState* MLGameState = GetWorld() ? GetWorld()->GetGameState<AMLGameState>() : nullptr;
+    if (!MLGameState)
     {
-    case EMLPawnDataFallbackSource::None:
-        return TEXT("None");
-    case EMLPawnDataFallbackSource::Experience:
-        return TEXT("Experience");
-    case EMLPawnDataFallbackSource::GameModeDefault:
-        return TEXT("GameModeDefault");
-    case EMLPawnDataFallbackSource::Missing:
-        return TEXT("Missing");
-    default:
-        return TEXT("Unknown");
+        UE_LOG(LogMLInit, Verbose, TEXT("[MLInit] %s: GameState not available while trying to bind ExperienceReady."), *GetNameSafe(GetOwner()));
+        return;
     }
+
+    if (!ExperienceReadyHandle.IsValid())
+    {
+        ExperienceReadyHandle = MLGameState->OnExperienceReady().AddUObject(this, &ThisClass::HandleExperienceReady);
+    }
+
+    if (MLGameState->IsExperienceReady())
+    {
+        HandleExperienceReady();
+    }
+}
+
+void UMLPawnExtensionComponent::HandleExperienceReady()
+{
+    UE_LOG(LogMLInit, Verbose, TEXT("[MLInit] ExperienceReady received for %s"), *GetNameSafe(GetOwner()));
+    CheckDefaultInitialization();
 }
 
 void UMLPawnExtensionComponent::DumpInitState() const
@@ -319,17 +346,24 @@ void UMLPawnExtensionComponent::DumpInitState() const
     const APlayerState* PS = Pawn ? Pawn->GetPlayerState() : nullptr;
     const AMLGameState* MLGameState = GetWorld() ? GetWorld()->GetGameState<AMLGameState>() : nullptr;
     const UMLExperienceDefinition* Experience = MLGameState ? MLGameState->GetCurrentExperience() : nullptr;
+    const UMLHeroComponent* HeroComponent = Pawn ? Pawn->FindComponentByClass<UMLHeroComponent>() : nullptr;
+    const bool bIsLocal = PC ? PC->IsLocalController() : false;
 
-    UE_LOG(LogMLInit, Log, TEXT("[ML.InitStateDump] Pawn=%s PC=%s PS=%s Role=%s ExperienceReady=%s Experience=%s ExperiencePath=%s InitState=%s PawnData=%s PawnDataPath=%s Fallback=%s"),
+    UE_LOG(LogMLInit, Log, TEXT("[ML.InitStateDump] Pawn=%s PC=%s PS=%s Local=%s ExperienceReady=%s ExperiencePresent=%s Experience=%s ExperiencePath=%s InitState=%s PawnDataPresent=%s PawnData=%s PawnDataPath=%s PawnDataSource=%s UsedFallback=%s HeroSetupDone(Input=%s,Camera=%s)"),
         *GetNameSafe(Pawn),
         *GetNameSafe(PC),
         *GetNameSafe(PS),
-        GetLocalRoleText(Pawn),
+        bIsLocal ? TEXT("Local") : TEXT("Remote"),
         MLGameState && MLGameState->IsExperienceReady() ? TEXT("true") : TEXT("false"),
+        Experience ? TEXT("true") : TEXT("false"),
         *GetNameSafe(Experience),
-        *GetObjectPathSafe(Experience),
+        *GetPathNameSafe(Experience),
         *CurrentInitState.ToString(),
+        PawnData ? TEXT("true") : TEXT("false"),
         *GetNameSafe(PawnData),
-        *GetObjectPathSafe(PawnData),
-        GetFallbackSourceText());
+        *GetPathNameSafe(PawnData),
+        *PawnDataResolutionSource.ToString(),
+        bUsedPawnDataFallback ? TEXT("true") : TEXT("false"),
+        HeroComponent && HeroComponent->IsInputSetupDone() ? TEXT("true") : TEXT("false"),
+        HeroComponent && HeroComponent->IsCameraSetupDone() ? TEXT("true") : TEXT("false"));
 }

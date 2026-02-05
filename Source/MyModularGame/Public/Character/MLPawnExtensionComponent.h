@@ -4,6 +4,7 @@
 #include "Components/PawnComponent.h"
 #include "Components/GameFrameworkInitStateInterface.h"
 #include "GameplayTagContainer.h"
+#include "Delegates/Delegate.h"
 #include "MLPawnExtensionComponent.generated.h"
 
 class UMLPawnData;
@@ -50,8 +51,8 @@ public:
 
     FGameplayTag GetCurrentInitState() const { return CurrentInitState; }
     const UMLPawnData* GetPawnData() const { return PawnData; }
-    EMLPawnDataFallbackSource GetPawnDataFallbackSource() const { return PawnDataFallbackSource; }
-    const TCHAR* GetFallbackSourceText() const;
+    FName GetPawnDataResolutionSource() const { return PawnDataResolutionSource; }
+    bool IsUsingPawnDataFallback() const { return bUsedPawnDataFallback; }
 
     void DumpInitState() const;
 
@@ -59,7 +60,9 @@ private:
     bool HasController() const;
     bool HasPlayerState() const;
     bool IsExperienceReady() const;
-    bool ResolvePawnData();
+    bool ResolvePawnDataWithFallback();
+    void TryBindToExperienceReady();
+    void HandleExperienceReady();
 
     static const FName NAME_ActorFeatureName;
 
@@ -71,8 +74,12 @@ private:
     TObjectPtr<const UMLPawnData> PawnData;
 
     UPROPERTY(VisibleInstanceOnly, Category = "InitState")
-    EMLPawnDataFallbackSource PawnDataFallbackSource;
+    FName PawnDataResolutionSource;
 
     UPROPERTY(VisibleInstanceOnly, Category = "InitState")
-    bool bGameplayReadyHandled;
+    bool bUsedPawnDataFallback = false;
+
+    bool bGameplayReadyHandled = false;
+
+    FDelegateHandle ExperienceReadyHandle;
 };
