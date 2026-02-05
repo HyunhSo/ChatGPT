@@ -2,8 +2,6 @@
 
 #include "Character/MLHeroComponent.h"
 #include "Character/MLPawnData.h"
-#include "Player/MLPlayerState.h"
-#include "AbilitySystemComponent.h"
 #include "Components/GameFrameworkComponentManager.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
@@ -54,8 +52,6 @@ namespace
                     const APlayerController* PC = It->Get();
                     const APawn* Pawn = PC ? PC->GetPawn() : nullptr;
                     const APlayerState* PS = PC ? PC->PlayerState : nullptr;
-                    const AMLPlayerState* MLPlayerState = Cast<AMLPlayerState>(PS);
-                    const UAbilitySystemComponent* ASC = MLPlayerState ? MLPlayerState->GetMLAbilitySystemComponent() : nullptr;
                     const UMLPawnExtensionComponent* PawnExtension = Pawn ? Pawn->FindComponentByClass<UMLPawnExtensionComponent>() : nullptr;
                     const UMLHeroComponent* HeroComponent = Pawn ? Pawn->FindComponentByClass<UMLHeroComponent>() : nullptr;
                     const bool bIsLocal = PC ? PC->IsLocalController() : false;
@@ -63,12 +59,10 @@ namespace
                     const FName PawnDataSource = PawnExtension ? PawnExtension->GetPawnDataResolutionSource() : NAME_None;
                     const bool bUsedFallback = PawnExtension ? PawnExtension->IsUsingPawnDataFallback() : false;
 
-                    UE_LOG(LogMLInit, Log, TEXT("[ML.InitStateDump] PC=%s Pawn=%s PS=%s PSClass=%s IsMLPlayerState=%s Local=%s MLInitState=%s PawnDataPresent=%s PawnData=%s PawnDataPath=%s PawnDataSource=%s UsedFallback=%s ASC=%s ASCRepMode=%s HeroSetupDone(Input=%s,Camera=%s)"),
+                    UE_LOG(LogMLInit, Log, TEXT("[ML.InitStateDump] PC=%s Pawn=%s PS=%s Local=%s MLInitState=%s PawnDataPresent=%s PawnData=%s PawnDataPath=%s PawnDataSource=%s UsedFallback=%s HeroSetupDone(Input=%s,Camera=%s)"),
                         *GetNameSafe(PC),
                         *GetNameSafe(Pawn),
                         *GetNameSafe(PS),
-                        PS ? *PS->GetClass()->GetName() : TEXT("None"),
-                        MLPlayerState ? TEXT("true") : TEXT("false"),
                         bIsLocal ? TEXT("Local") : TEXT("Remote"),
                         PawnExtension ? *PawnExtension->GetCurrentInitState().ToString() : TEXT("None"),
                         PawnData ? TEXT("true") : TEXT("false"),
@@ -76,8 +70,6 @@ namespace
                         *GetPathNameSafe(PawnData),
                         *PawnDataSource.ToString(),
                         bUsedFallback ? TEXT("true") : TEXT("false"),
-                        ASC ? TEXT("true") : TEXT("false"),
-                        ASC ? *StaticEnum<EGameplayEffectReplicationMode>()->GetNameStringByValue(static_cast<int64>(ASC->GetReplicationMode())) : TEXT("None"),
                         HeroComponent && HeroComponent->IsInputSetupDone() ? TEXT("true") : TEXT("false"),
                         HeroComponent && HeroComponent->IsCameraSetupDone() ? TEXT("true") : TEXT("false"));
                 }
@@ -238,7 +230,6 @@ void UMLPawnExtensionComponent::HandleControllerChanged()
 void UMLPawnExtensionComponent::HandlePlayerStateAvailable()
 {
     UE_LOG(LogMLInit, Verbose, TEXT("[MLInit] HandlePlayerStateAvailable for %s"), *GetNameSafe(GetOwner()));
-    LogAbilitySystemState(TEXT("HandlePlayerStateAvailable"));
     CheckDefaultInitialization();
 }
 
@@ -325,41 +316,20 @@ void UMLPawnExtensionComponent::HandleExperienceReady()
     CheckDefaultInitialization();
 }
 
-void UMLPawnExtensionComponent::LogAbilitySystemState(const TCHAR* Context) const
-{
-    const APawn* Pawn = GetPawn<APawn>();
-    const APlayerState* PS = Pawn ? Pawn->GetPlayerState() : nullptr;
-    const AMLPlayerState* MLPlayerState = Cast<AMLPlayerState>(PS);
-    const UAbilitySystemComponent* ASC = MLPlayerState ? MLPlayerState->GetMLAbilitySystemComponent() : nullptr;
-
-    UE_LOG(LogMLAbility, Log, TEXT("[MLAbility] %s Owner=%s PS=%s PSClass=%s IsMLPlayerState=%s ASC=%s ASCRepMode=%s"),
-        Context ? Context : TEXT("Unknown"),
-        *GetNameSafe(GetOwner()),
-        *GetNameSafe(PS),
-        PS ? *PS->GetClass()->GetName() : TEXT("None"),
-        MLPlayerState ? TEXT("true") : TEXT("false"),
-        ASC ? TEXT("true") : TEXT("false"),
-        ASC ? *StaticEnum<EGameplayEffectReplicationMode>()->GetNameStringByValue(static_cast<int64>(ASC->GetReplicationMode())) : TEXT("None"));
-}
-
 void UMLPawnExtensionComponent::DumpInitState() const
 {
     const APawn* Pawn = GetPawn<APawn>();
     const APlayerController* PC = Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
     const APlayerState* PS = Pawn ? Pawn->GetPlayerState() : nullptr;
-    const AMLPlayerState* MLPlayerState = Cast<AMLPlayerState>(PS);
-    const UAbilitySystemComponent* ASC = MLPlayerState ? MLPlayerState->GetMLAbilitySystemComponent() : nullptr;
     const AMLGameState* MLGameState = GetWorld() ? GetWorld()->GetGameState<AMLGameState>() : nullptr;
     const UMLExperienceDefinition* Experience = MLGameState ? MLGameState->GetCurrentExperience() : nullptr;
     const UMLHeroComponent* HeroComponent = Pawn ? Pawn->FindComponentByClass<UMLHeroComponent>() : nullptr;
     const bool bIsLocal = PC ? PC->IsLocalController() : false;
 
-    UE_LOG(LogMLInit, Log, TEXT("[ML.InitStateDump] Pawn=%s PC=%s PS=%s PSClass=%s IsMLPlayerState=%s Local=%s ExperienceReady=%s ExperiencePresent=%s Experience=%s ExperiencePath=%s InitState=%s PawnDataPresent=%s PawnData=%s PawnDataPath=%s PawnDataSource=%s UsedFallback=%s ASC=%s ASCRepMode=%s HeroSetupDone(Input=%s,Camera=%s)"),
+    UE_LOG(LogMLInit, Log, TEXT("[ML.InitStateDump] Pawn=%s PC=%s PS=%s Local=%s ExperienceReady=%s ExperiencePresent=%s Experience=%s ExperiencePath=%s InitState=%s PawnDataPresent=%s PawnData=%s PawnDataPath=%s PawnDataSource=%s UsedFallback=%s HeroSetupDone(Input=%s,Camera=%s)"),
         *GetNameSafe(Pawn),
         *GetNameSafe(PC),
         *GetNameSafe(PS),
-        PS ? *PS->GetClass()->GetName() : TEXT("None"),
-        MLPlayerState ? TEXT("true") : TEXT("false"),
         bIsLocal ? TEXT("Local") : TEXT("Remote"),
         MLGameState && MLGameState->IsExperienceReady() ? TEXT("true") : TEXT("false"),
         Experience ? TEXT("true") : TEXT("false"),
@@ -371,8 +341,6 @@ void UMLPawnExtensionComponent::DumpInitState() const
         *GetPathNameSafe(PawnData),
         *PawnDataResolutionSource.ToString(),
         bUsedPawnDataFallback ? TEXT("true") : TEXT("false"),
-        ASC ? TEXT("true") : TEXT("false"),
-        ASC ? *StaticEnum<EGameplayEffectReplicationMode>()->GetNameStringByValue(static_cast<int64>(ASC->GetReplicationMode())) : TEXT("None"),
         HeroComponent && HeroComponent->IsInputSetupDone() ? TEXT("true") : TEXT("false"),
         HeroComponent && HeroComponent->IsCameraSetupDone() ? TEXT("true") : TEXT("false"));
 }
