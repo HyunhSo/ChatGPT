@@ -2,140 +2,156 @@
 
 #include "Character/MLHeroComponent.h"
 #include "Character/MLPawnData.h"
+#include "Components/GameFrameworkComponentManager.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
-#include "GameFramework/Controller.h"
 #include "GameFramework/Pawn.h"
+#include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerState.h"
 #include "GameModes/MLGameState.h"
-#include "HAL/IConsoleManager.h"
 #include "System/MLExperienceDefinition.h"
-#include "UObject/UObjectIterator.h"
+#include "System/MyInitStateTags.h"
 
-namespace MLPawnInitState
+DEFINE_LOG_CATEGORY(LogMLInit);
+
+const FName UMLPawnExtensionComponent::NAME_ActorFeatureName(TEXT("MLPawnExtension"));
+
+namespace
 {
-    static const TCHAR* ToString(const EMLPawnInitState State)
-    {
-        switch (State)
+    static FAutoConsoleCommand CmdMLInitStateDump(
+        TEXT("ML.InitStateDump"),
+        TEXT("Dump Pawn/PC/PS/GameState(ExperienceReady) and MLPawnExtension init states."),
+        FConsoleCommandDelegate::CreateLambda([]()
         {
-        case EMLPawnInitState::Spawned:
-            return TEXT("Spawned");
-        case EMLPawnInitState::DataAvailable:
-            return TEXT("DataAvailable");
-        case EMLPawnInitState::DataInitialized:
-            return TEXT("DataInitialized");
-        case EMLPawnInitState::GameplayReady:
-            return TEXT("GameplayReady");
-        default:
-            return TEXT("Unknown");
-        }
-    }
+            if (!GEngine)
+            {
+                return;
+            }
+
+            for (const FWorldContext& WorldContext : GEngine->GetWorldContexts())
+            {
+                UWorld* World = WorldContext.World();
+                if (!World || !World->IsGameWorld())
+                {
+                    continue;
+                }
+
+                const AMLGameState* MLGameState = World->GetGameState<AMLGameState>();
+                UE_LOG(LogMLInit, Log, TEXT("[ML.InitStateDump] World=%s NetMode=%d GS=%s ExperienceReady=%s Experience=%s"),
+                    *GetNameSafe(World),
+                    static_cast<int32>(World->GetNetMode()),
+                    *GetNameSafe(MLGameState),
+                    MLGameState && MLGameState->IsExperienceReady() ? TEXT("true") : TEXT("false"),
+                    *GetNameSafe(MLGameState ? MLGameState->GetCurrentExperience() : nullptr));
+
+                for (FConstPlayerControllerIterator It = World->GetPlayerControllerIterator(); It; ++It)
+                {
+                    const APlayerController* PC = It->Get();
+                    const APawn* Pawn = PC ? PC->GetPawn() : nullptr;
+                    const APlayerState* PS = PC ? PC->PlayerState : nullptr;
+                    const UMLPawnExtensionComponent* PawnExtension = Pawn ? Pawn->FindComponentByClass<UMLPawnExtensionComponent>() : nullptr;
+
+                    UE_LOG(LogMLInit, Log, TEXT("[ML.InitStateDump] PC=%s Pawn=%s PS=%s MLInitState=%s PawnData=%s"),
+                        *GetNameSafe(PC),
+                        *GetNameSafe(Pawn),
+                        *GetNameSafe(PS),
+                        PawnExtension ? *PawnExtension->GetCurrentInitState().ToString() : TEXT("None"),
+                        *GetNameSafe(PawnExtension ? PawnExtension->GetPawnData() : nullptr));
+                }
+            }
+        })
+    );
 }
 
 UMLPawnExtensionComponent::UMLPawnExtensionComponent()
 {
-    PrimaryComponentTick.bCanEverTick = true;
-    PrimaryComponentTick.bStartWithTickEnabled = true;
+    PrimaryComponentTick.bCanEverTick = false;
 }
 
 void UMLPawnExtensionComponent::BeginPlay()
 {
     Super::BeginPlay();
 
-    TryProgressInitState();
+    RegisterInitStateFeature();
+    CheckDefaultInitialization();
 }
 
-void UMLPawnExtensionComponent::TickComponent(const float DeltaTime, const ELevelTick TickType, FActorComponentTickFunction* ThisTickFunction)
+FName UMLPawnExtensionComponent::GetFeatureName() const
 {
-    Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
-    TryProgressInitState();
-
-    if (InitState == EMLPawnInitState::GameplayReady)
-    {
-        SetComponentTickEnabled(false);
-    }
+    return NAME_ActorFeatureName;
 }
 
-void UMLPawnExtensionComponent::TryProgressInitState()
+void UMLPawnExtensionComponent::CheckDefaultInitialization()
 {
-    if (InitState == EMLPawnInitState::Spawned && CanEnterDataAvailable())
-    {
-        SetInitState(EMLPawnInitState::DataAvailable);
-    }
+    static const TArray<FGameplayTag> InitChain = {
+        MyInitStateTags::TAG_InitState_Spawned,
+        MyInitStateTags::TAG_InitState_DataAvailable,
+        MyInitStateTags::TAG_InitState_DataInitialized,
+        MyInitStateTags::TAG_InitState_GameplayReady
+    };
 
-    if (InitState == EMLPawnInitState::DataAvailable && CanEnterDataInitialized())
-    {
-        SetInitState(EMLPawnInitState::DataInitialized);
-    }
-
-    if (InitState == EMLPawnInitState::DataInitialized && CanEnterGameplayReady())
-    {
-        SetInitState(EMLPawnInitState::GameplayReady);
-    }
+    ContinueInitStateChain(InitChain);
 }
 
-bool UMLPawnExtensionComponent::CanEnterDataAvailable() const
+FGameplayTag UMLPawnExtensionComponent::GetInitState() const
 {
-    const APawn* Pawn = GetPawn<APawn>();
-    if (!Pawn)
-    {
-        return false;
-    }
-
-    const AController* Controller = Pawn->GetController();
-    if (Pawn->IsPlayerControlled())
-    {
-        if (!Controller || !Controller->PlayerState)
-        {
-            return false;
-        }
-    }
-
-    const UWorld* World = GetWorld();
-    const AMLGameState* MLGameState = (World != nullptr) ? World->GetGameState<AMLGameState>() : nullptr;
-    return MLGameState != nullptr;
+    return CurrentInitState;
 }
 
-bool UMLPawnExtensionComponent::CanEnterDataInitialized()
+bool UMLPawnExtensionComponent::HasReachedInitState(const FGameplayTag DesiredState) const
 {
-    const UWorld* World = GetWorld();
-    const AMLGameState* MLGameState = (World != nullptr) ? World->GetGameState<AMLGameState>() : nullptr;
-    if (!MLGameState || !MLGameState->IsExperienceReady())
-    {
-        return false;
-    }
-
-    const UMLExperienceDefinition* Experience = MLGameState->GetCurrentExperience();
-    if (!Experience || !Experience->DefaultPawnData)
-    {
-        return false;
-    }
-
-    PawnData = Experience->DefaultPawnData;
-    return true;
+    return CurrentInitState == DesiredState;
 }
 
-bool UMLPawnExtensionComponent::CanEnterGameplayReady() const
+void UMLPawnExtensionComponent::SetInitState(const FGameplayTag NewState)
 {
-    return PawnData != nullptr;
+    CurrentInitState = NewState;
 }
 
-void UMLPawnExtensionComponent::SetInitState(const EMLPawnInitState NewState)
+bool UMLPawnExtensionComponent::CanChangeInitState(UGameFrameworkComponentManager* Manager, const FGameplayTag CurrentState, const FGameplayTag DesiredState) const
 {
-    if (InitState == NewState)
+    if (!CurrentState.IsValid() && DesiredState == MyInitStateTags::TAG_InitState_Spawned)
     {
-        return;
+        return true;
     }
 
-    InitState = NewState;
+    if (CurrentState == MyInitStateTags::TAG_InitState_Spawned && DesiredState == MyInitStateTags::TAG_InitState_DataAvailable)
+    {
+        return HasController() && HasPlayerState() && (GetWorld() != nullptr) && (GetWorld()->GetGameState<AMLGameState>() != nullptr);
+    }
 
-    UE_LOG(LogTemp, Log, TEXT("MLPawnExtensionComponent: %s entered state %s (PawnData=%s)"),
+    if (CurrentState == MyInitStateTags::TAG_InitState_DataAvailable && DesiredState == MyInitStateTags::TAG_InitState_DataInitialized)
+    {
+        return IsExperienceReady();
+    }
+
+    if (CurrentState == MyInitStateTags::TAG_InitState_DataInitialized && DesiredState == MyInitStateTags::TAG_InitState_GameplayReady)
+    {
+        return PawnData != nullptr;
+    }
+
+    return false;
+}
+
+void UMLPawnExtensionComponent::HandleChangeInitState(UGameFrameworkComponentManager* Manager, const FGameplayTag CurrentState, const FGameplayTag DesiredState)
+{
+    if (DesiredState == MyInitStateTags::TAG_InitState_DataInitialized)
+    {
+        const AMLGameState* MLGameState = GetWorld() ? GetWorld()->GetGameState<AMLGameState>() : nullptr;
+        const UMLExperienceDefinition* Experience = MLGameState ? MLGameState->GetCurrentExperience() : nullptr;
+        PawnData = Experience ? Experience->DefaultPawnData : nullptr;
+    }
+
+    UE_LOG(LogMLInit, Log, TEXT("[MLInit] %s: %s -> %s (Controller=%s, PlayerState=%s, ExperienceReady=%s, PawnData=%s)"),
         *GetNameSafe(GetOwner()),
-        MLPawnInitState::ToString(InitState),
+        *CurrentState.ToString(),
+        *DesiredState.ToString(),
+        *GetNameSafe(GetPawn<APawn>() ? GetPawn<APawn>()->GetController() : nullptr),
+        *GetNameSafe(GetPawn<APawn>() ? GetPawn<APawn>()->GetPlayerState() : nullptr),
+        IsExperienceReady() ? TEXT("true") : TEXT("false"),
         *GetNameSafe(PawnData));
 
-    if (InitState == EMLPawnInitState::GameplayReady)
+    if (DesiredState == MyInitStateTags::TAG_InitState_GameplayReady)
     {
         if (APawn* Pawn = GetPawn<APawn>())
         {
@@ -147,27 +163,69 @@ void UMLPawnExtensionComponent::SetInitState(const EMLPawnInitState NewState)
     }
 }
 
+void UMLPawnExtensionComponent::OnActorInitStateChanged(const FActorInitStateChangedParams& Params)
+{
+    CheckDefaultInitialization();
+}
+
+void UMLPawnExtensionComponent::RegisterInitStateFeature()
+{
+    CurrentInitState = FGameplayTag();
+    PawnData = nullptr;
+
+    Super::RegisterInitStateFeature();
+}
+
+void UMLPawnExtensionComponent::UnregisterInitStateFeature()
+{
+    Super::UnregisterInitStateFeature();
+
+    CurrentInitState = FGameplayTag();
+    PawnData = nullptr;
+}
+
+void UMLPawnExtensionComponent::HandleControllerChanged()
+{
+    UE_LOG(LogMLInit, Verbose, TEXT("[MLInit] HandleControllerChanged for %s"), *GetNameSafe(GetOwner()));
+    CheckDefaultInitialization();
+}
+
+void UMLPawnExtensionComponent::HandlePlayerStateAvailable()
+{
+    UE_LOG(LogMLInit, Verbose, TEXT("[MLInit] HandlePlayerStateAvailable for %s"), *GetNameSafe(GetOwner()));
+    CheckDefaultInitialization();
+}
+
+bool UMLPawnExtensionComponent::HasController() const
+{
+    const APawn* Pawn = GetPawn<APawn>();
+    return Pawn && Pawn->GetController() != nullptr;
+}
+
+bool UMLPawnExtensionComponent::HasPlayerState() const
+{
+    const APawn* Pawn = GetPawn<APawn>();
+    return Pawn && Pawn->GetPlayerState() != nullptr;
+}
+
+bool UMLPawnExtensionComponent::IsExperienceReady() const
+{
+    const AMLGameState* MLGameState = GetWorld() ? GetWorld()->GetGameState<AMLGameState>() : nullptr;
+    return MLGameState && MLGameState->IsExperienceReady();
+}
+
 void UMLPawnExtensionComponent::DumpInitState() const
 {
-    UE_LOG(LogTemp, Log, TEXT("ML.InitStateDump: Pawn=%s State=%s PawnData=%s"),
-        *GetNameSafe(GetOwner()),
-        MLPawnInitState::ToString(InitState),
+    const APawn* Pawn = GetPawn<APawn>();
+    const APlayerController* PC = Pawn ? Cast<APlayerController>(Pawn->GetController()) : nullptr;
+    const APlayerState* PS = Pawn ? Pawn->GetPlayerState() : nullptr;
+    const AMLGameState* MLGameState = GetWorld() ? GetWorld()->GetGameState<AMLGameState>() : nullptr;
+
+    UE_LOG(LogMLInit, Log, TEXT("[ML.InitStateDump] Pawn=%s PC=%s PS=%s ExperienceReady=%s InitState=%s PawnData=%s"),
+        *GetNameSafe(Pawn),
+        *GetNameSafe(PC),
+        *GetNameSafe(PS),
+        MLGameState && MLGameState->IsExperienceReady() ? TEXT("true") : TEXT("false"),
+        *CurrentInitState.ToString(),
         *GetNameSafe(PawnData));
 }
-
-static void DumpAllInitStates()
-{
-    for (TObjectIterator<UMLPawnExtensionComponent> It; It; ++It)
-    {
-        UMLPawnExtensionComponent* Component = *It;
-        if (IsValid(Component) && Component->GetWorld() && Component->GetWorld()->IsGameWorld())
-        {
-            Component->DumpInitState();
-        }
-    }
-}
-
-static FAutoConsoleCommand CVarMLInitStateDump(
-    TEXT("ML.InitStateDump"),
-    TEXT("Dump init-state information for all UMLPawnExtensionComponent instances."),
-    FConsoleCommandDelegate::CreateStatic(&DumpAllInitStates));
