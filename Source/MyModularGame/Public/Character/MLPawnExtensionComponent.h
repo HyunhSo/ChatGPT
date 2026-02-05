@@ -42,6 +42,8 @@ public:
 
     FGameplayTag GetCurrentInitState() const { return CurrentInitState; }
     const UMLPawnData* GetPawnData() const { return PawnData; }
+    FName GetPawnDataResolutionSource() const { return PawnDataResolutionSource; }
+    bool IsUsingPawnDataFallback() const { return bUsedPawnDataFallback; }
 
     void DumpInitState() const;
 
@@ -49,6 +51,7 @@ private:
     bool HasController() const;
     bool HasPlayerState() const;
     bool IsExperienceReady() const;
+    bool ResolvePawnDataWithFallback();
     void TryBindToExperienceReady();
     void HandleExperienceReady();
 
@@ -60,6 +63,14 @@ private:
 
     UPROPERTY(VisibleInstanceOnly, Category = "InitState")
     TObjectPtr<const UMLPawnData> PawnData;
+
+    UPROPERTY(VisibleInstanceOnly, Category = "InitState")
+    FName PawnDataResolutionSource;
+
+    UPROPERTY(VisibleInstanceOnly, Category = "InitState")
+    bool bUsedPawnDataFallback = false;
+
+    bool bGameplayReadyHandled = false;
 
     FDelegateHandle ExperienceReadyHandle;
 };

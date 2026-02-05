@@ -2,6 +2,7 @@
 
 #include "Character/MLCharacter.h"
 #include "Character/MLPawnData.h"
+#include "GameFramework/WorldSettings.h"
 #include "GameModes/MLGameState.h"
 #include "Player/MLPlayerController.h"
 #include "Player/MyModularPlayerState.h"
@@ -15,6 +16,7 @@ AMLGameMode::AMLGameMode()
     GameStateClass = AMLGameState::StaticClass();
 
     DefaultExperiencePath = FSoftObjectPath(TEXT("/Game/System/Experiences/B_ML_DefaultExperience.B_ML_DefaultExperience"));
+    DefaultPawnDataPath = FSoftObjectPath();
 }
 
 void AMLGameMode::InitGameState()
@@ -31,9 +33,16 @@ void AMLGameMode::InitGameState()
     const UMLExperienceDefinition* ResolvedExperience = ResolveExperienceDefinition();
     MLGameState->SetCurrentExperience(ResolvedExperience);
 
-    UE_LOG(LogTemp, Log, TEXT("MLGameMode: Experience set to %s (%s)"),
+    FName PawnDataSource = NAME_None;
+    const UMLPawnData* ResolvedDefaultPawnData = ResolveDefaultPawnData(PawnDataSource);
+    MLGameState->SetDefaultPawnData(ResolvedDefaultPawnData, PawnDataSource);
+
+    UE_LOG(LogTemp, Log, TEXT("MLGameMode: Experience set to %s (%s), DefaultPawnData=%s (%s), Source=%s"),
         *GetNameSafe(ResolvedExperience),
-        *GetPathNameSafe(ResolvedExperience));
+        *GetPathNameSafe(ResolvedExperience),
+        *GetNameSafe(ResolvedDefaultPawnData),
+        *GetPathNameSafe(ResolvedDefaultPawnData),
+        *PawnDataSource.ToString());
 }
 
 const UMLExperienceDefinition* AMLGameMode::ResolveExperienceDefinition()
@@ -67,23 +76,63 @@ const UMLExperienceDefinition* AMLGameMode::ResolveExperienceDefinition()
         UE_LOG(LogTemp, Warning, TEXT("MLGameMode: DefaultExperiencePath is not configured."));
     }
 
-    UE_LOG(LogTemp, Warning, TEXT("MLGameMode: Falling back to a transient experience/pawn data to keep startup safe during development."));
-    return CreateFallbackExperienceDefinition();
+    UE_LOG(LogTemp, Warning, TEXT("MLGameMode: No experience configured. Continuing with null ExperienceDefinition for PR3 dev flow."));
+    return nullptr;
 }
 
-const UMLExperienceDefinition* AMLGameMode::CreateFallbackExperienceDefinition()
+const UMLPawnData* AMLGameMode::ResolveDefaultPawnData(FName& OutPawnDataSource) const
 {
-    if (!FallbackExperienceDefinition)
+    OutPawnDataSource = NAME_None;
+
+    if (const AMLGameState* MLGameState = GetGameState<AMLGameState>())
     {
-        FallbackExperienceDefinition = NewObject<UMLExperienceDefinition>(this, NAME_None, RF_Transient);
+        if (const UMLExperienceDefinition* Experience = MLGameState->GetCurrentExperience())
+        {
+            if (Experience->DefaultPawnData)
+            {
+                OutPawnDataSource = TEXT("Experience.DefaultPawnData");
+                return Experience->DefaultPawnData;
+            }
+        }
     }
 
-    if (!FallbackPawnData)
+    if (DefaultPawnData)
     {
-        FallbackPawnData = NewObject<UMLPawnData>(this, NAME_None, RF_Transient);
-        FallbackPawnData->PawnClass = DefaultPawnClass;
+        OutPawnDataSource = TEXT("GameMode.DefaultPawnData");
+        return DefaultPawnData;
     }
 
-    FallbackExperienceDefinition->DefaultPawnData = FallbackPawnData;
-    return FallbackExperienceDefinition;
+    if (!DefaultPawnDataPath.IsNull())
+    {
+        if (UObject* LoadedObject = DefaultPawnDataPath.TryLoad())
+        {
+            if (const UMLPawnData* LoadedPawnData = Cast<UMLPawnData>(LoadedObject))
+            {
+                OutPawnDataSource = TEXT("GameMode.DefaultPawnDataPath");
+                return LoadedPawnData;
+            }
+
+            UE_LOG(LogTemp, Error, TEXT("MLGameMode: Config path '%s' did not resolve to UMLPawnData (resolved: %s)."),
+                *DefaultPawnDataPath.ToString(),
+                *GetNameSafe(LoadedObject));
+        }
+        else
+        {
+            UE_LOG(LogTemp, Error, TEXT("MLGameMode: Failed to load config pawn data path '%s'."), *DefaultPawnDataPath.ToString());
+        }
+    }
+
+    if (const AWorldSettings* WorldSettings = GetWorld() ? GetWorld()->GetWorldSettings() : nullptr)
+    {
+        if (const AMLGameMode* DefaultGM = WorldSettings->DefaultGameMode ? Cast<AMLGameMode>(WorldSettings->DefaultGameMode->GetDefaultObject()) : nullptr)
+        {
+            if (DefaultGM->DefaultPawnData)
+            {
+                OutPawnDataSource = TEXT("WorldSettings.DefaultGameMode.DefaultPawnData");
+                return DefaultGM->DefaultPawnData;
+            }
+        }
+    }
+
+    return nullptr;
 }

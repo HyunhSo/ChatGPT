@@ -2,9 +2,11 @@
 
 #include "Net/UnrealNetwork.h"
 #include "System/MLExperienceDefinition.h"
+#include "Character/MLPawnData.h"
 
 AMLGameState::AMLGameState()
     : bExperienceReady(false)
+    , PawnDataSource(NAME_None)
 {
 }
 
@@ -14,6 +16,8 @@ void AMLGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
 
     DOREPLIFETIME(AMLGameState, ExperienceDefinition);
     DOREPLIFETIME(AMLGameState, bExperienceReady);
+    DOREPLIFETIME(AMLGameState, DefaultPawnData);
+    DOREPLIFETIME(AMLGameState, PawnDataSource);
 }
 
 void AMLGameState::SetCurrentExperience(const UMLExperienceDefinition* InExperienceDefinition)
@@ -27,6 +31,17 @@ void AMLGameState::SetCurrentExperience(const UMLExperienceDefinition* InExperie
     bExperienceReady = (ExperienceDefinition != nullptr);
 
     BroadcastExperienceReadyIfNeeded();
+}
+
+void AMLGameState::SetDefaultPawnData(const UMLPawnData* InPawnData, FName InPawnDataSource)
+{
+    if (!HasAuthority())
+    {
+        return;
+    }
+
+    DefaultPawnData = InPawnData;
+    PawnDataSource = InPawnDataSource;
 }
 
 void AMLGameState::OnRep_ExperienceDefinition()
@@ -45,4 +60,12 @@ void AMLGameState::BroadcastExperienceReadyIfNeeded()
     {
         OnExperienceReadyDelegate.Broadcast();
     }
+}
+
+void AMLGameState::OnRep_DefaultPawnData()
+{
+}
+
+void AMLGameState::OnRep_PawnDataSource()
+{
 }

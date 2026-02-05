@@ -27,14 +27,15 @@ protected:
     UPROPERTY(Config, EditDefaultsOnly, Category = "Experience", meta = (AllowedClasses = "/Script/MyModularGame.MLExperienceDefinition"))
     FSoftObjectPath DefaultExperiencePath;
 
+    /** Optional explicit pawn data fallback when experience is null or has no pawn data. */
+    UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Experience", meta = (AllowedClasses = "/Script/MyModularGame.MLPawnData"))
+    TObjectPtr<const UMLPawnData> DefaultPawnData;
+
+    /** Config-driven fallback pawn data path (used when DefaultPawnData is unset). */
+    UPROPERTY(Config, EditDefaultsOnly, Category = "Experience", meta = (AllowedClasses = "/Script/MyModularGame.MLPawnData"))
+    FSoftObjectPath DefaultPawnDataPath;
+
 private:
     const UMLExperienceDefinition* ResolveExperienceDefinition();
-    const UMLExperienceDefinition* CreateFallbackExperienceDefinition();
-
-private:
-    UPROPERTY(Transient)
-    TObjectPtr<UMLExperienceDefinition> FallbackExperienceDefinition;
-
-    UPROPERTY(Transient)
-    TObjectPtr<UMLPawnData> FallbackPawnData;
+    const UMLPawnData* ResolveDefaultPawnData(FName& OutPawnDataSource) const;
 };
