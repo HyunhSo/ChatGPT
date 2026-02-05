@@ -6,6 +6,7 @@
 
 class UMLPawnExtensionComponent;
 class UMLHeroComponent;
+class UAbilitySystemComponent;
 
 UCLASS()
 class MYMODULARGAME_API AMLCharacter : public AModularPawn
@@ -14,6 +15,9 @@ class MYMODULARGAME_API AMLCharacter : public AModularPawn
 
 public:
     AMLCharacter(const FObjectInitializer& ObjectInitializer = FObjectInitializer::Get());
+
+    UFUNCTION(BlueprintCallable, Category = "Abilities")
+    UAbilitySystemComponent* GetMLAbilitySystemComponent() const;
 
 protected:
     virtual void BeginPlay() override;
