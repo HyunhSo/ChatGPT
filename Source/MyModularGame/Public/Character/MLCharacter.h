@@ -6,6 +6,7 @@
 
 class UMLPawnExtensionComponent;
 class UMLHeroComponent;
+class UMLCombatComponent;
 
 UCLASS()
 class MYMODULARGAME_API AMLCharacter : public AModularPawn
@@ -24,4 +25,7 @@ private:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Hero", meta = (AllowPrivateAccess = "true"))
     TObjectPtr<UMLHeroComponent> HeroComponent;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Combat", meta = (AllowPrivateAccess = "true"))
+    TObjectPtr<UMLCombatComponent> CombatComponent;
 };
