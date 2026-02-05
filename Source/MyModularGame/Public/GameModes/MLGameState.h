@@ -49,6 +49,9 @@ private:
     UPROPERTY(ReplicatedUsing = OnRep_ExperienceDefinition)
     TObjectPtr<const UMLExperienceDefinition> ExperienceDefinition;
 
+    UPROPERTY(Replicated)
+    TObjectPtr<const UMLPawnData> DefaultPawnData;
+
     UPROPERTY(ReplicatedUsing = OnRep_ExperienceReady)
     bool bExperienceReady;
 

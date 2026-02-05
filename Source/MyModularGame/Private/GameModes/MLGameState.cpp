@@ -1,5 +1,6 @@
 #include "GameModes/MLGameState.h"
 
+#include "Character/MLPawnData.h"
 #include "Net/UnrealNetwork.h"
 #include "System/MLExperienceDefinition.h"
 #include "Character/MLPawnData.h"
@@ -15,6 +16,7 @@ void AMLGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
     DOREPLIFETIME(AMLGameState, ExperienceDefinition);
+    DOREPLIFETIME(AMLGameState, DefaultPawnData);
     DOREPLIFETIME(AMLGameState, bExperienceReady);
     DOREPLIFETIME(AMLGameState, DefaultPawnData);
     DOREPLIFETIME(AMLGameState, PawnDataSource);

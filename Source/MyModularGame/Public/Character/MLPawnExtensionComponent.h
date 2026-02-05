@@ -13,6 +13,15 @@ class UGameFrameworkComponentManager;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogMLInit, Log, All);
 
+UENUM()
+enum class EMLPawnDataFallbackSource : uint8
+{
+    None,
+    Experience,
+    GameModeDefault,
+    Missing
+};
+
 /**
  * Minimal Lyra-style pawn init-state orchestrator.
  */

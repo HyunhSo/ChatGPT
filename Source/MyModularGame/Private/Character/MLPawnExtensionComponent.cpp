@@ -18,6 +18,21 @@ const FName UMLPawnExtensionComponent::NAME_ActorFeatureName(TEXT("MLPawnExtensi
 
 namespace
 {
+    static FString GetObjectPathSafe(const UObject* Object)
+    {
+        return Object ? Object->GetPathName() : TEXT("None");
+    }
+
+    static const TCHAR* GetLocalRoleText(const APawn* Pawn)
+    {
+        if (!Pawn)
+        {
+            return TEXT("NoPawn");
+        }
+
+        return Pawn->IsLocallyControlled() ? TEXT("Local") : TEXT("Remote");
+    }
+
     static FAutoConsoleCommand CmdMLInitStateDump(
         TEXT("ML.InitStateDump"),
         TEXT("Dump Pawn/PC/PS/GameState(ExperienceReady) and MLPawnExtension init states."),
@@ -79,6 +94,8 @@ namespace
 }
 
 UMLPawnExtensionComponent::UMLPawnExtensionComponent()
+    : PawnDataFallbackSource(EMLPawnDataFallbackSource::None)
+    , bGameplayReadyHandled(false)
 {
     PrimaryComponentTick.bCanEverTick = false;
 }
@@ -121,6 +138,11 @@ bool UMLPawnExtensionComponent::HasReachedInitState(const FGameplayTag DesiredSt
 
 void UMLPawnExtensionComponent::SetInitState(const FGameplayTag NewState)
 {
+    if (CurrentInitState == NewState)
+    {
+        return;
+    }
+
     CurrentInitState = NewState;
 }
 
@@ -156,14 +178,15 @@ void UMLPawnExtensionComponent::HandleChangeInitState(UGameFrameworkComponentMan
         ResolvePawnDataWithFallback();
     }
 
-    UE_LOG(LogMLInit, Log, TEXT("[MLInit] %s: %s -> %s (Controller=%s, PlayerState=%s, ExperienceReady=%s, PawnData=%s)"),
+    UE_LOG(LogMLInit, Log, TEXT("[MLInit] %s: %s -> %s (Controller=%s, PlayerState=%s, ExperienceReady=%s, PawnData=%s, Fallback=%s)"),
         *GetNameSafe(GetOwner()),
         *CurrentState.ToString(),
         *DesiredState.ToString(),
         *GetNameSafe(GetPawn<APawn>() ? GetPawn<APawn>()->GetController() : nullptr),
         *GetNameSafe(GetPawn<APawn>() ? GetPawn<APawn>()->GetPlayerState() : nullptr),
         IsExperienceReady() ? TEXT("true") : TEXT("false"),
-        *GetNameSafe(PawnData));
+        *GetNameSafe(PawnData),
+        GetFallbackSourceText());
 
     if (DesiredState == MyInitStateTags::TAG_InitState_GameplayReady)
     {
