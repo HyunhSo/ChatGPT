@@ -36,9 +36,14 @@ private:
     void HandleStartFireRequest(const TCHAR* Source);
     void HandleStopFireRequest(const TCHAR* Source);
     void FireOnce(const TCHAR* Source);
+    void ServerFireShot();
+
+    UFUNCTION(NetMulticast, Unreliable)
+    void MulticastOnFireReplicated(FVector_NetQuantize TraceStart, FVector_NetQuantize TraceEnd, bool bDidHit, FVector_NetQuantize HitLocation);
 
     float GetEffectiveFireRate() const;
     float GetShotIntervalSeconds() const;
+    float GetEffectiveFireRange() const;
     FString BuildOwnerDebugString() const;
 
 private:
