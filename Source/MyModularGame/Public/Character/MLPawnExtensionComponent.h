@@ -4,6 +4,7 @@
 #include "Components/PawnComponent.h"
 #include "Components/GameFrameworkInitStateInterface.h"
 #include "GameplayTagContainer.h"
+#include "Delegates/Delegate.h"
 #include "MLPawnExtensionComponent.generated.h"
 
 class UMLPawnData;
@@ -48,6 +49,8 @@ private:
     bool HasController() const;
     bool HasPlayerState() const;
     bool IsExperienceReady() const;
+    void TryBindToExperienceReady();
+    void HandleExperienceReady();
 
     static const FName NAME_ActorFeatureName;
 
@@ -57,4 +60,6 @@ private:
 
     UPROPERTY(VisibleInstanceOnly, Category = "InitState")
     TObjectPtr<const UMLPawnData> PawnData;
+
+    FDelegateHandle ExperienceReadyHandle;
 };
