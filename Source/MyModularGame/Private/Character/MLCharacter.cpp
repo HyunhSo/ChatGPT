@@ -1,5 +1,6 @@
 #include "Character/MLCharacter.h"
 
+#include "Character/MLCombatComponent.h"
 #include "Character/MLHeroComponent.h"
 #include "Character/MLPawnExtensionComponent.h"
 
@@ -8,6 +9,7 @@ AMLCharacter::AMLCharacter(const FObjectInitializer& ObjectInitializer)
 {
     PawnExtensionComponent = CreateDefaultSubobject<UMLPawnExtensionComponent>(TEXT("PawnExtensionComponent"));
     HeroComponent = CreateDefaultSubobject<UMLHeroComponent>(TEXT("HeroComponent"));
+    CombatComponent = CreateDefaultSubobject<UMLCombatComponent>(TEXT("CombatComponent"));
 }
 
 void AMLCharacter::BeginPlay()
