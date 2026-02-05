@@ -1,7 +1,18 @@
 #include "GameModes/MLGameMode.h"
 
+#include "Character/MLCharacter.h"
 #include "GameModes/MLGameState.h"
+#include "Player/MLPlayerController.h"
+#include "Player/MyModularPlayerState.h"
 #include "System/MLExperienceDefinition.h"
+
+AMLGameMode::AMLGameMode()
+{
+    DefaultPawnClass = AMLCharacter::StaticClass();
+    PlayerControllerClass = AMLPlayerController::StaticClass();
+    PlayerStateClass = AMyModularPlayerState::StaticClass();
+    GameStateClass = AMLGameState::StaticClass();
+}
 
 void AMLGameMode::InitGameState()
 {

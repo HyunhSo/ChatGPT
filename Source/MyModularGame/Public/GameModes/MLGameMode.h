@@ -12,6 +12,8 @@ class MYMODULARGAME_API AMLGameMode : public AGameModeBase
     GENERATED_BODY()
 
 public:
+    AMLGameMode();
+
     virtual void InitGameState() override;
 
 protected:

@@ -1,5 +1,6 @@
 #include "Character/MLHeroComponent.h"
 
+#include "Character/MLPawnExtensionComponent.h"
 #include "GameFramework/Pawn.h"
 
 void UMLHeroComponent::HandleGameplayReady()
@@ -17,5 +18,5 @@ void UMLHeroComponent::HandleGameplayReady()
 
     bDidLocalSetup = true;
 
-    UE_LOG(LogTemp, Log, TEXT("MLHeroComponent: Local input/camera setup complete for %s (debug stub)."), *GetNameSafe(Pawn));
+    UE_LOG(LogMLInit, Log, TEXT("MLHeroComponent: Local input/camera setup complete for %s (debug stub)."), *GetNameSafe(Pawn));
 }
