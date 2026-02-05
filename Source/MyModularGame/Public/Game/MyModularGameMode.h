@@ -5,7 +5,7 @@
 #include "MyModularGameMode.generated.h"
 
 /**
- * ModularGameplay 기반 컴포넌트 주입을 지원하는 기본 GameMode.
+ * ModularGameplay + InitState 샘플 클래스들을 기본값으로 사용하는 GameMode.
  */
 UCLASS(Blueprintable)
 class MYMODULARGAME_API AMyModularGameMode : public AModularGameModeBase

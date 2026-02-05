@@ -1,6 +1,14 @@
 #include "Game/MyModularGameMode.h"
 
+#include "Character/MyModularPawn.h"
+#include "Game/MyModularGameState.h"
+#include "Player/MyModularPlayerController.h"
+#include "Player/MyModularPlayerState.h"
+
 AMyModularGameMode::AMyModularGameMode()
 {
-    // 필요 시 여기서 기본 Pawn, PlayerController를 Modular 기반 클래스로 지정하세요.
+    DefaultPawnClass = AMyModularPawn::StaticClass();
+    PlayerControllerClass = AMyModularPlayerController::StaticClass();
+    PlayerStateClass = AMyModularPlayerState::StaticClass();
+    GameStateClass = AMyModularGameState::StaticClass();
 }
