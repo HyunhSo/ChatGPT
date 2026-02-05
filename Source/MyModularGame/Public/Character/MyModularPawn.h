@@ -4,7 +4,8 @@
 #include "GameFramework/ModularPawn.h"
 #include "MyModularPawn.generated.h"
 
-class UMyPawnInitComponent;
+class UMyPawnExtensionComponent;
+class UMyHeroComponent;
 
 UCLASS(Blueprintable)
 class MYMODULARGAME_API AMyModularPawn : public AModularPawn
@@ -16,5 +17,8 @@ public:
 
 private:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Init", meta = (AllowPrivateAccess = "true"))
-    TObjectPtr<UMyPawnInitComponent> PawnInitComponent;
+    TObjectPtr<UMyPawnExtensionComponent> PawnExtensionComponent;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Hero", meta = (AllowPrivateAccess = "true"))
+    TObjectPtr<UMyHeroComponent> HeroComponent;
 };

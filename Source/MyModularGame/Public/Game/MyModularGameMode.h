@@ -4,6 +4,8 @@
 #include "GameFramework/ModularGameMode.h"
 #include "MyModularGameMode.generated.h"
 
+class UMyGameData;
+
 /**
  * ModularGameplay + InitState 샘플 클래스들을 기본값으로 사용하는 GameMode.
  */
@@ -14,4 +16,11 @@ class MYMODULARGAME_API AMyModularGameMode : public AModularGameModeBase
 
 public:
     AMyModularGameMode();
+
+protected:
+    virtual void InitGameState() override;
+
+private:
+    UPROPERTY(EditDefaultsOnly, Category = "GameData")
+    TObjectPtr<UMyGameData> GameData;
 };
