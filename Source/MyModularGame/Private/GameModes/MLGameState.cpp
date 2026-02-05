@@ -1,5 +1,6 @@
 #include "GameModes/MLGameState.h"
 
+#include "Character/MLPawnData.h"
 #include "Net/UnrealNetwork.h"
 #include "System/MLExperienceDefinition.h"
 
@@ -13,6 +14,7 @@ void AMLGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLife
     Super::GetLifetimeReplicatedProps(OutLifetimeProps);
 
     DOREPLIFETIME(AMLGameState, ExperienceDefinition);
+    DOREPLIFETIME(AMLGameState, DefaultPawnData);
     DOREPLIFETIME(AMLGameState, bExperienceReady);
 }
 
@@ -27,6 +29,16 @@ void AMLGameState::SetCurrentExperience(const UMLExperienceDefinition* InExperie
     bExperienceReady = (ExperienceDefinition != nullptr);
 
     BroadcastExperienceReadyIfNeeded();
+}
+
+void AMLGameState::SetDefaultPawnData(const UMLPawnData* InDefaultPawnData)
+{
+    if (!HasAuthority())
+    {
+        return;
+    }
+
+    DefaultPawnData = InDefaultPawnData;
 }
 
 void AMLGameState::OnRep_ExperienceDefinition()

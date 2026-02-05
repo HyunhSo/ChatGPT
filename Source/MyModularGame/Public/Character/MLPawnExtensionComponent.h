@@ -12,6 +12,15 @@ class UGameFrameworkComponentManager;
 
 DECLARE_LOG_CATEGORY_EXTERN(LogMLInit, Log, All);
 
+UENUM()
+enum class EMLPawnDataFallbackSource : uint8
+{
+    None,
+    Experience,
+    GameModeDefault,
+    Missing
+};
+
 /**
  * Minimal Lyra-style pawn init-state orchestrator.
  */
@@ -41,6 +50,8 @@ public:
 
     FGameplayTag GetCurrentInitState() const { return CurrentInitState; }
     const UMLPawnData* GetPawnData() const { return PawnData; }
+    EMLPawnDataFallbackSource GetPawnDataFallbackSource() const { return PawnDataFallbackSource; }
+    const TCHAR* GetFallbackSourceText() const;
 
     void DumpInitState() const;
 
@@ -48,6 +59,7 @@ private:
     bool HasController() const;
     bool HasPlayerState() const;
     bool IsExperienceReady() const;
+    bool ResolvePawnData();
 
     static const FName NAME_ActorFeatureName;
 
@@ -57,4 +69,10 @@ private:
 
     UPROPERTY(VisibleInstanceOnly, Category = "InitState")
     TObjectPtr<const UMLPawnData> PawnData;
+
+    UPROPERTY(VisibleInstanceOnly, Category = "InitState")
+    EMLPawnDataFallbackSource PawnDataFallbackSource;
+
+    UPROPERTY(VisibleInstanceOnly, Category = "InitState")
+    bool bGameplayReadyHandled;
 };

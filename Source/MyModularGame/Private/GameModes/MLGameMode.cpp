@@ -1,6 +1,7 @@
 #include "GameModes/MLGameMode.h"
 
 #include "Character/MLCharacter.h"
+#include "Character/MLPawnData.h"
 #include "GameModes/MLGameState.h"
 #include "Player/MLPlayerController.h"
 #include "Player/MyModularPlayerState.h"
@@ -25,7 +26,12 @@ void AMLGameMode::InitGameState()
         return;
     }
 
-    MLGameState->SetCurrentExperience(DefaultExperienceDefinition);
+    const UMLPawnData* ResolvedDefaultPawnData = DefaultPawnData.LoadSynchronous();
 
-    UE_LOG(LogTemp, Log, TEXT("MLGameMode: Experience set to %s"), *GetNameSafe(DefaultExperienceDefinition));
+    MLGameState->SetCurrentExperience(DefaultExperienceDefinition);
+    MLGameState->SetDefaultPawnData(ResolvedDefaultPawnData);
+
+    UE_LOG(LogTemp, Log, TEXT("MLGameMode: Experience=%s DefaultPawnData=%s"),
+        *GetNameSafe(DefaultExperienceDefinition),
+        *GetNameSafe(ResolvedDefaultPawnData));
 }
