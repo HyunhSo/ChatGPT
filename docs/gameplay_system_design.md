@@ -66,6 +66,158 @@ Design goal: each gameplay feature can be added incrementally as a new module/co
 
 ---
 
+## 2.5) Component boundary definitions (Hero / Movement / Stamina / Input)
+
+The following boundaries assume a modular, Lyra-style pawn stack where each component has a narrow, testable contract.
+
+### A) MLHeroComponent
+
+**Core responsibilities**
+
+- Orchestrates hero-level startup/shutdown for a pawn ("hero ready" gate).
+- Applies hero/pawn data (movement profile, ability sets, input config references) through services, not hardcoded values.
+- Wires high-level dependencies between sibling feature components (movement, stamina, combat), primarily through init-state tags/events.
+- Owns hero-level replicated status that must survive component ordering differences but not pawn destruction.
+
+**Allowed to know**
+
+- Pawn Extension init-state API and readiness tags.
+- Abstract interfaces of sibling systems (e.g., `IMLMovementInterface`, `IMLStaminaInterface`, input config provider).
+- PlayerState identity handle needed to bind persistent player data to this pawn instance.
+- Data assets that define hero defaults.
+
+**Must NOT know**
+
+- Low-level movement math (acceleration curves, friction formulas).
+- Raw stamina drain/regeneration formulas.
+- Concrete input device mappings or UI widget internals.
+- GameMode rule details beyond exposed policy interfaces.
+
+**Public-facing vs internal logic**
+
+- Public-facing:
+  - `InitializeHero(...)`, `UninitializeHero(...)`, readiness/query accessors, and high-level hero state events (`OnHeroReady`, `OnHeroShutdown`).
+- Internal:
+  - Dependency tracking, one-time grant/apply guards, and ordering/race protection between component init phases.
+
+**Typical lifecycle events**
+
+- `OnRegister` / `BeginPlay`: register required dependencies and init tags.
+- `OnPawnReadyToInitialize` (or equivalent extension hook): apply hero data.
+- `OnPossessedBy` / `OnRep_PlayerState`: bind player identity.
+- `EndPlay` / `OnUnPossessed`: revoke transient grants and clear listeners.
+
+### B) MLMovementComponent
+
+**Core responsibilities**
+
+- Converts movement intent into movement state transitions (walk/sprint/crouch/dash eligibility and active mode).
+- Owns movement capability flags and local movement-related cooldown windows.
+- Publishes movement state changes for animation/UI consumers.
+- Requests stamina costs through stamina interface when movement actions require resource checks.
+
+**Allowed to know**
+
+- Character movement primitive/component API.
+- Input intent abstraction (`Move`, `SprintPressed`, `CrouchToggle`) but not concrete device bindings.
+- Stamina service/interface for "can pay" and "consume" style calls.
+- Movement configuration assets/tuning tables.
+
+**Must NOT know**
+
+- Player progression persistence model (belongs to PlayerState/profile systems).
+- UI implementation specifics (widgets, HUD layouts).
+- Match scoring/win conditions.
+- Directly mutating stamina internals without going through the stamina contract.
+
+**Public-facing vs internal logic**
+
+- Public-facing:
+  - Requests like `SetMoveInput`, `TryStartSprint`, `TryStopSprint`, `GetMovementState`, and movement state delegates/events.
+- Internal:
+  - Speed blending, acceleration gating, anti-spam timers, prediction helpers, and authoritative reconciliation details.
+
+**Typical lifecycle events**
+
+- `InitializeComponent` / `BeginPlay`: cache movement primitive and config.
+- Per-frame update (`TickComponent`) for mode evaluation and transitions.
+- Network callbacks (`OnRep_*`) for replicated movement mode/capability flags.
+- `EndPlay`: clear timers/delegates.
+
+### C) MLStaminaComponent
+
+**Core responsibilities**
+
+- Owns stamina resource state (current, max, regen delay, regen rate).
+- Validates and processes stamina spend requests from other components.
+- Drives regeneration rules and interruption windows.
+- Replicates gameplay-critical stamina state and emits change events.
+
+**Allowed to know**
+
+- Time/update source needed for regen and cooldown tracking.
+- Abstract requesters through tags/reason codes (e.g., sprint, dodge, heavy attack).
+- Authority/prediction model required for spend validation.
+- Tuning data assets for stamina parameters.
+
+**Must NOT know**
+
+- Exact movement implementation details (velocity, friction).
+- Input binding or input action asset details.
+- UI rendering logic beyond broadcasting data/events.
+- Weapon/combat internals except as generic resource consumers.
+
+**Public-facing vs internal logic**
+
+- Public-facing:
+  - `CanSpend`, `Spend`, `Restore`, `GetStaminaSnapshot`, `OnStaminaChanged`, `OnStaminaDepleted`.
+- Internal:
+  - Clamp/math logic, regen timers, spend queueing, server/client reconciliation rules.
+
+**Typical lifecycle events**
+
+- `BeginPlay`: initialize current/max values from config.
+- `TickComponent` or timer-driven loop for regeneration.
+- Replication notifications for stamina values and regen lockouts.
+- `EndPlay`: stop timers and clear observers.
+
+### D) MLInputComponent
+
+**Core responsibilities**
+
+- Binds input actions to gameplay intent messages/commands.
+- Translates hardware/input-framework events into semantic gameplay actions.
+- Routes intent to owning controller/pawn feature interfaces in a predictable, remappable way.
+- Handles local input enable/disable gates based on hero readiness and gameplay state.
+
+**Allowed to know**
+
+- Enhanced Input (or equivalent) mapping contexts and action assets.
+- Owning controller/pawn interfaces that accept intent commands.
+- Local player-specific settings for sensitivity/keybind layers.
+
+**Must NOT know**
+
+- Stamina formulas, movement physics math, or combat damage logic.
+- Authoritative game rule decisions.
+- Persistence schema for progression/loadout (except requesting application through a service).
+
+**Public-facing vs internal logic**
+
+- Public-facing:
+  - `BindInput`, `UnbindInput`, mapping-context management, and intent dispatch callbacks/events.
+- Internal:
+  - Trigger buffering, chord/combo interpretation, dead-zone shaping, device-switch heuristics.
+
+**Typical lifecycle events**
+
+- `SetupPlayerInputComponent`: bind actions and mapping contexts.
+- `OnPossess` / `OnRep_Controller`: rebind on control changes.
+- `OnHeroReady` / `OnHeroShutdown`: gate or ungate gameplay input.
+- `EndPlay`: unbind and cleanup local delegates.
+
+---
+
 ## 3) Ownership rules (who owns what, who should not know what)
 
 ### Authority ownership
