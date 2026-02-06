@@ -316,3 +316,104 @@ Design in explicit extension seams:
 
 - **No observability**
   - Without logs/trace categories and debug widgets, modular systems become hard to reason about.
+
+## 2.6) Proposed public API surface: stamina integrated with movement
+
+This section defines a **public contract** between movement and stamina systems. It is intentionally implementation-agnostic so internals can evolve without API churn.
+
+### Design goals
+
+- Keep movement logic and stamina math decoupled.
+- Make state transitions explicit (attempt, accepted, denied, ended).
+- Support both continuous drains (sprint) and one-shot costs (dodge/jump boost).
+- Provide stable notifications for UI, animation, and gameplay scripting.
+
+### A) Public types (conceptual)
+
+- `StaminaReasonTag`  
+  Semantic reason for stamina usage or lockout (for example: Sprint, Dodge, Slide, Exhausted).
+- `StaminaSpendPolicy`  
+  Indicates one-shot vs continuous consumption behavior.
+- `StaminaSnapshot`  
+  Immutable read model containing `Current`, `Max`, `Normalized`, `RegenSuppressedUntil`, and `IsExhausted`.
+- `MovementStaminaGateResult`  
+  Result object for movement requests; contains `Accepted`, `FailureReasonTag`, and optional `RetryAfterSeconds`.
+
+### B) Stamina component public methods (plain-text signatures)
+
+- `InitializeStamina(initialCurrent, initialMax, regenRatePerSecond, regenDelaySeconds)`
+- `GetStaminaSnapshot() -> StaminaSnapshot`
+- `CanSpend(amount, reasonTag) -> MovementStaminaGateResult`
+- `TrySpend(amount, reasonTag) -> MovementStaminaGateResult`
+- `BeginContinuousSpend(reasonTag, ratePerSecond, minRequiredToStart) -> MovementStaminaGateResult`
+- `UpdateContinuousSpend(reasonTag, deltaSeconds) -> MovementStaminaGateResult`
+- `EndContinuousSpend(reasonTag)`
+- `Restore(amount, reasonTag)`
+- `SetRegenEnabled(isEnabled, reasonTag)`
+- `ForceExhaustedState(reasonTag, durationSeconds)`
+
+### C) Movement-facing methods (plain-text signatures)
+
+These live on the movement-side public interface and are the only movement entry points other systems should call.
+
+- `TryStartSprint() -> MovementStaminaGateResult`
+- `StopSprint(stopReasonTag)`
+- `TryStartDodge(direction) -> MovementStaminaGateResult`
+- `TryPerformJumpWithStaminaCost() -> MovementStaminaGateResult`
+- `GetMovementResourceState() -> { IsSprinting, IsDodgeActive, IsStaminaBlocked }`
+- `CanEnterMovementMode(modeTag) -> MovementStaminaGateResult`
+
+### D) Events / notifications
+
+Expose notifications as stable public signals; payloads should be structured and versionable.
+
+- `OnStaminaChanged(previousSnapshot, newSnapshot, reasonTag)`
+- `OnStaminaExhausted(reasonTag)`
+- `OnStaminaRecoveredFromExhaustion(newSnapshot)`
+- `OnStaminaSpendDenied(requestedAmount, reasonTag, gateResult)`
+- `OnContinuousSpendStateChanged(reasonTag, isActive)`
+- `OnMovementModeStaminaGateFailed(modeTag, gateResult)`
+- `OnSprintStateChanged(isSprinting, reasonTag)`
+
+### E) Expected call order (authoritative happy path)
+
+#### Sprint start
+
+1. Input layer requests `TryStartSprint()` on movement.
+2. Movement asks stamina `BeginContinuousSpend(Sprint, rate, minRequiredToStart)`.
+3. If accepted, movement enters sprint mode and emits `OnSprintStateChanged(true, Sprint)`.
+4. During updates, movement (or stamina owner loop) calls `UpdateContinuousSpend(Sprint, deltaSeconds)`.
+5. If spend fails mid-sprint (depletion, suppression, policy change), stamina emits denial/exhaustion and movement exits sprint with `StopSprint(Exhausted)`.
+
+#### Sprint stop
+
+1. Input release or state interruption calls `StopSprint(reason)`.
+2. Movement exits sprint mode first (single source of truth for movement state).
+3. Movement calls `EndContinuousSpend(Sprint)`.
+4. Stamina resumes regeneration according to regen policy and emits snapshot change notifications.
+
+#### One-shot action (dodge)
+
+1. Movement request `TryStartDodge(direction)`.
+2. Movement calls `TrySpend(dodgeCost, Dodge)`.
+3. If accepted, movement enters dodge.
+4. If denied, movement does not enter dodge and emits `OnMovementModeStaminaGateFailed(Dodge, gateResult)`.
+
+### F) Error and edge-case handling strategy
+
+- **Deterministic denial contract:** all failed requests return `MovementStaminaGateResult` (never implicit booleans without reason).
+- **Idempotent stop/end calls:** `StopSprint` and `EndContinuousSpend` are safe if already inactive.
+- **Clamp and sanitize inputs:** negative costs/restores and invalid rates are rejected with explicit failure tags; no silent correction in public API.
+- **Single writer rule for resource state:** only stamina component mutates stamina values; movement only requests spends.
+- **Re-entrancy safety:** if event listeners trigger new spend requests, process them in a defined order (queue or next tick boundary) to avoid nested state corruption.
+- **Mode conflict precedence:** if multiple movement modes compete for stamina, define priority policy externally and require a reason tag for each request.
+- **Exhaustion hysteresis:** exhaustion and recovery thresholds should avoid rapid flip-flopping (publicly observable as separate exhausted/recovered events).
+- **Lifecycle resilience:** before initialization or after shutdown, requests return a standardized `NotReady` gate result.
+- **Network/prediction mismatch handling:** when authoritative correction occurs, publish a correction-flavored reason tag so UI and animation can distinguish normal transitions from reconciliations.
+
+### G) Maintainability rules for future API evolution
+
+- Prefer additive changes (new reason tags, new event payload fields) over signature-breaking edits.
+- Keep reason tags data-driven so features can add stamina consumers without hardcoded enum rewrites.
+- Treat `StaminaSnapshot` as the canonical read object for UI and telemetry, avoiding direct multi-field queries.
+- Version event payloads if fields become optional/expanded to preserve script compatibility.
